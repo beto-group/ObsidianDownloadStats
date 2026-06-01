@@ -346,8 +346,8 @@ function MainComponent(props) {
             // Tooltip setup
             const tooltip = d3.select(tooltipRef.current);
 
-            // Bars (Pure white per user request)
-            svg.selectAll(".bar")
+            // Bars — no individual hover events; driven by overlay below
+            const bars = svg.selectAll(".bar")
                 .data(data)
                 .join("rect")
                 .attr("class", "bar")
@@ -356,55 +356,119 @@ function MainComponent(props) {
                 .attr("y", innerHeight) // Initial for animation
                 .attr("height", 0)       // Initial for animation
                 .attr("fill", "var(--text-muted)")
-                .attr("rx", 3)
-                .style("transition", "fill 0.2s")
-                // Hover Events
-                .on("mouseover", function (event, d) {
-                    d3.select(this)
-                        .attr("fill", "var(--text-accent)")
-                        .style("filter", "drop-shadow(0 0 8px var(--interactive-accent))");
+                .attr("rx", 3);
 
-                    tooltip.transition()
-                        .duration(200)
-                        .style("opacity", 1);
-
-                    const pointerData = d3.pointer(event, container);
-                    const xPos = pointerData[0];
-                    const yPos = pointerData[1];
-
-                    tooltip.html(`
-                        <div style="color: var(--text-accent); font-weight: bold; margin-bottom: 5px;">${d.name}</div>
-                        <div>Downloads: <span style="color:var(--text-normal)">${d.downloads.toLocaleString()}</span></div>
-                        <div style="font-size: 10px; margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--background-modifier-border)">
-                            <div style="color: #3b82f6;">Win: ${d.osBase.windows.toLocaleString()}</div>
-                            <div style="color: #a855f7;">Mac: ${d.osBase.mac.toLocaleString()}</div>
-                            <div style="color: #eab308;">Lin: ${d.osBase.linux.toLocaleString()}</div>
-                            <div style="color: #22c55e;">And: ${d.osBase.android.toLocaleString()}</div>
-                        </div>
-                        <div style="font-size: 10px; color: var(--text-muted); margin-top: 5px;">${d.date.toLocaleDateString()}</div>
-                      `)
-                        .style("left", (xPos + 15) + "px")
-                        .style("top", (yPos - 28) + "px");
-
-                    setHoveredData(d);
-                })
-                .on("mouseout", function () {
-                    d3.select(this)
-                        .attr("fill", "var(--text-muted)")
-                        .style("filter", "none");
-
-                    tooltip.transition()
-                        .duration(500)
-                        .style("opacity", 0);
-
-                    setHoveredData(null);
-                })
-                // Animation
-                .transition()
+            // Animate bars in
+            bars.transition()
                 .duration(800)
                 .delay(function(d, i) { return i * 30; })
                 .attr("y", function(d) { return y(d.downloads); })
                 .attr("height", function(d) { return innerHeight - y(d.downloads); });
+
+            // Vertical crosshair line (hidden by default)
+            const crosshair = svg.append("line")
+                .attr("class", "crosshair")
+                .attr("y1", 0)
+                .attr("y2", innerHeight)
+                .attr("stroke", "var(--text-accent)")
+                .attr("stroke-width", 1)
+                .attr("stroke-dasharray", "4,3")
+                .attr("opacity", 0)
+                .style("pointer-events", "none");
+
+            // Build a sorted domain array for bisector lookup
+            const xDomain = x.domain(); // version strings in order
+
+            // Full-chart transparent overlay — catches all mouse movement
+            svg.append("rect")
+                .attr("class", "hover-overlay")
+                .attr("x", 0)
+                .attr("y", 0)
+                .attr("width", innerWidth)
+                .attr("height", innerHeight)
+                .attr("fill", "transparent")
+                .style("cursor", "crosshair")
+                .on("mousemove", function(event) {
+                    const [mouseX] = d3.pointer(event); // coords relative to <g>
+
+                    // Find closest version index by inverting the band scale
+                    // Each band center = x(version) + bandwidth/2
+                    const bw = x.bandwidth();
+                    let closestIdx = 0;
+                    let closestDist = Infinity;
+                    xDomain.forEach(function(version, i) {
+                        const center = x(version) + bw / 2;
+                        const dist = Math.abs(mouseX - center);
+                        if (dist < closestDist) {
+                            closestDist = dist;
+                            closestIdx = i;
+                        }
+                    });
+
+                    const d = data[closestIdx];
+                    if (!d) return;
+
+                    const barCenterX = x(d.version) + bw / 2;
+
+                    // Move crosshair
+                    crosshair
+                        .attr("x1", barCenterX)
+                        .attr("x2", barCenterX)
+                        .attr("opacity", 0.6);
+
+                    // Highlight active bar, dim others
+                    bars
+                        .attr("fill", function(bd) {
+                            return bd.version === d.version
+                                ? "var(--text-accent)"
+                                : "var(--text-muted)";
+                        })
+                        .style("filter", function(bd) {
+                            return bd.version === d.version
+                                ? "drop-shadow(0 0 8px var(--interactive-accent))"
+                                : "none";
+                        });
+
+                    // Position tooltip relative to container
+                    const [containerX, containerY] = d3.pointer(event, container);
+                    const tooltipX = containerX + 15;
+                    const tooltipY = Math.max(10, containerY - 28);
+
+                    tooltip
+                        .style("opacity", 1)
+                        .html(`
+                            <div style="color: var(--text-accent); font-weight: bold; margin-bottom: 5px;">${d.name}</div>
+                            <div>Downloads: <span style="color:var(--text-normal)">${d.downloads.toLocaleString()}</span></div>
+                            <div style="font-size: 10px; margin-top: 5px; padding-top: 5px; border-top: 1px solid var(--background-modifier-border)">
+                                <div style="color: #3b82f6;">Win: ${d.osBase.windows.toLocaleString()}</div>
+                                <div style="color: #a855f7;">Mac: ${d.osBase.mac.toLocaleString()}</div>
+                                <div style="color: #eab308;">Lin: ${d.osBase.linux.toLocaleString()}</div>
+                                <div style="color: #22c55e;">And: ${d.osBase.android.toLocaleString()}</div>
+                            </div>
+                            <div style="font-size: 10px; color: var(--text-muted); margin-top: 5px;">${d.date.toLocaleDateString()}</div>
+                        `)
+                        .style("left", tooltipX + "px")
+                        .style("top", tooltipY + "px");
+
+                    setHoveredData(d);
+                })
+                .on("mouseleave", function() {
+                    // Reset all bars
+                    bars
+                        .attr("fill", "var(--text-muted)")
+                        .style("filter", "none");
+
+                    // Hide crosshair
+                    crosshair.attr("opacity", 0);
+
+                    // Hide tooltip
+                    tooltip
+                        .transition()
+                        .duration(300)
+                        .style("opacity", 0);
+
+                    setHoveredData(null);
+                });
 
             // Draw OS Lines
             const lineGroup = svg.append("g").attr("class", "os-lines");
