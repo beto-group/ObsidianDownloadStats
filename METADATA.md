@@ -3,7 +3,7 @@ author: beto.group
 contributor: []
 version: 1.0.0
 id: obsidian-download-stats-674
-name: OBSIDIAN DOWNLOAD STATS
+name: ObsidianDownloadStats
 description: An interactive telemetry visualizer mapping Obsidian application releases download distribution and OS market share using D3.js.
 status: stable
 complexity: intermediate
@@ -16,7 +16,9 @@ compatibility:
 repository:
   - https://github.com/beto-group/ObsidianDownloadStats
 missing: []
-resources: []
+resources:
+  - assets/image/preview_1.webp
+  - assets/videos/preview.gif
 type: DatacoreComponent
 target: Datacore
 security:

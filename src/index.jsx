@@ -1,5 +1,6 @@
 async function View(props) {
     const { folderPath, dc } = props;
+    dc.currentFolderPath = folderPath;
     const { useState, useEffect } = dc;
 
     try {
